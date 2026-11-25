@@ -20,4 +20,3 @@ Open [the local game](http://localhost:4198/). Play and progress are stored on t
 The game models five skaters and a goalie per side, individual blue-line passes, the goalie-only crease, a free-play-line cap, and a 30-second possession clock. Match length is selectable. This build uses simplified restarts and does not include online rooms.
 
 Rules reference [Ringette Canada](https://www.ringette.ca/kids/how-to-play-ringette/).
-
