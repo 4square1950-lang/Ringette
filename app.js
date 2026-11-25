@@ -106,7 +106,7 @@ function table(headers,rows){
   scroll.append(table);return scroll;
 }
 const cityWeather=new Map();
-let mapView='globe',mapAngle={x:0,y:0},travelStart=0,travelActivity=false;
+let mapView='globe',mapAngle={x:0,y:0},venueAngle=0,travelStart=0,travelActivity=false;
 let campusUI;
 const arrival={...spawn,yaw:-Math.PI/2,cameraYaw:-Math.PI/2,pitch:0,effort:0,stride:0};
 const walk={...arrival,firstPerson:false};
@@ -210,7 +210,22 @@ function tour(preview){
     item.title=venue.city;item.setAttribute('aria-label',i+1+'. '+venue.city);item.setAttribute('aria-pressed',String(i===selectedVenue));
     stops.append(item);
   }
-  mapCard.append(visual,stops);
+  mapCard.append(visual);
+  if(preview){
+    const angles=element('nav','','tour-stops');
+    angles.setAttribute('aria-label','Venue camera angles');
+    for(const [index,label] of ['Overview','Ice level','Behind the goal','Grandstand'].entries()){
+      const control=button(label,()=>{
+        venueAngle=index;
+        mapAngle={x:0,y:0};
+        for(const item of angles.children)item.setAttribute('aria-pressed',String(item===control));
+      });
+      control.setAttribute('aria-pressed',String(index===venueAngle));
+      angles.append(control);
+    }
+    mapCard.append(angles);
+  }
+  mapCard.append(stops);
   const art=element('div','','venue-card-art');art.style.setProperty('--venue-accent',clubs[stop.club].trim);
   art.append(element('div','','rink-diagram'),element('span',clubs[stop.club].name));
   art.setAttribute('aria-hidden','true');
@@ -761,7 +776,7 @@ function frame(time){
       if(match.ended)finish();
     }
     rink.draw(match,'match',matchTime,save.profile,0,save.camera==='close'?1.19:1);
-  }else if(screen==='venues')rink.draw(demo,'venues',time/1000,save.profile,mapAngle.y);
+  }else if(screen==='venues')rink.draw(demo,'venues',time/1000,save.profile,mapAngle.y,1,venueAngle);
   else if(screen==='map'&&mapView==='globe')rink.draw({venues,index:selectedVenue,angle:mapAngle},'globe',time/1000,save.profile);
   else if(screen==='travel'){
     const elapsed=(time-travelStart)/1550;

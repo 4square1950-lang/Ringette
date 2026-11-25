@@ -1120,8 +1120,15 @@ export function createRinkView(canvas) {
         const bob=Math.sin(time*.13);
         camera.position.set(-9+bob*7,19*fit,26*fit);look.set(3,0,0);
       }else if(mode==='venues'){
-        const orbit=.3+turn;
-        camera.position.set(Math.sin(orbit)*37*fit,26*fit,Math.cos(orbit)*37*fit);look.set(0,0,0);
+        const angle = [
+          { orbit: .3, distance: 37, height: 26 },
+          { orbit: 1.25, distance: 24, height: 4.2 },
+          { orbit: Math.PI, distance: 24, height: 7 },
+          { orbit: -1.55, distance: 31, height: 14 }
+        ][pose] || { orbit: .3, distance: 37, height: 26 };
+        const orbit = angle.orbit + turn;
+        camera.position.set(Math.sin(orbit) * angle.distance * fit, angle.height * fit, Math.cos(orbit) * angle.distance * fit);
+        look.set(0, 0, 0);
       }else{
         camera.position.set(0,36*fit/zoom,39*fit/zoom);look.set(0,0,0);
       }

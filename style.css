@@ -42,3 +42,10 @@ dialog{width:min(92vw,29rem);background:var(--panel);border:1px solid var(--edge
 .campus-interact{position:absolute;bottom:3.2rem;left:50%;transform:translateX(-50%);box-shadow:0 6px 20px #0006}.campus-map-box{position:absolute;right:.9rem;bottom:.9rem;background:#112434ee;border:1px solid var(--edge);border-radius:.6rem;overflow:hidden;width:clamp(9rem,17vw,13rem)}.campus-map-box button{width:100%;border:0;border-radius:0;text-align:left;padding:.43rem .61rem;font-size:.78rem}.campus-minimap{display:block;width:100%;height:auto}.campus-minimap[hidden]{display:none}.visit-rink{touch-action:none;cursor:grab}.visit-rink:active{cursor:grabbing}
 @media(max-width:650px){.campus-actions{top:5.2rem;left:.85rem;right:auto}.campus-hint{max-width:50%}.campus-interact{left:.85rem;bottom:4rem;transform:none}}
 
+
+.clan-hub-link {
+  display:inline-flex;align-items:center;justify-content:center;
+  padding:.55rem .8rem;border:1px solid #8faba85c;border-radius:7px;
+  color:inherit;background:#253a40;text-decoration:none;font:inherit;
+}
+.clan-hub-link:hover,.clan-hub-link:focus-visible { border-color:currentColor; }
