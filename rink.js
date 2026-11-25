@@ -1066,6 +1066,12 @@ export function createRinkView(canvas) {
       animateAthlete(studio,time,pose==='Skate'?.65:0,variant,pose!=='Skate');
       studio.head.rotation.x=0;
       if(pose==='Look around')studio.head.rotation.set(Math.sin(time*1.9)*.038,Math.sin(time*1.15)*.38,0);
+      if(pose==='Ring control')poseUpper(studio,.18,Math.sin(time*3.8)*.22,Math.sin(time*3.8)*.08);
+      if(pose==='Victory'){
+        const hop=Math.pow(Math.max(0,Math.sin(time*5)),2);
+        studio.model.position.y+=hop*.13;
+        poseUpper(studio,-hop*.17,Math.sin(time*5)*.19,-hop*.085);
+      }
       const fit=Math.max(1,.78/camera.aspect);
       const taller=Math.max(1,identity.height/170);
       camera.position.set(.11*fit,1.10*taller,3.21*fit*taller/zoom);look.set(studio.relaxed?0:.16,.92*taller,.10);
@@ -1117,7 +1123,7 @@ export function createRinkView(canvas) {
         const orbit=.3+turn;
         camera.position.set(Math.sin(orbit)*37*fit,26*fit,Math.cos(orbit)*37*fit);look.set(0,0,0);
       }else{
-        camera.position.set(0,36*fit,39*fit);look.set(0,0,0);
+        camera.position.set(0,36*fit/zoom,39*fit/zoom);look.set(0,0,0);
       }
     }
     camera.lookAt(look);renderer.render(scene,camera);

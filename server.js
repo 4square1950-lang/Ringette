@@ -4,6 +4,8 @@ import {createReadStream,statSync} from 'node:fs';
 const files = new Map([
   ['/',['index.html','text/html']], ['/index.html',['index.html','text/html']],
   ['/style.css',['style.css','text/css']],
+  ['/sport-shell.css',['sport-shell.css','text/css']],
+  ['/sport-settings.js',['sport-settings.js','text/javascript']],
   ['/skater-face.jpg',['skater-face.jpg','image/jpeg']],
   ...['app','engine','rink','crowd','world-land','campus'].map(name=>['/'+name+'.js',[name+'.js','text/javascript']]),
   ...['three.module.js','three.core.js'].map(name=>['/vendor/'+name,['node_modules/three/build/'+name,'text/javascript']]),

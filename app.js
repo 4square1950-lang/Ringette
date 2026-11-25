@@ -40,7 +40,9 @@ const viewTitles={map:'World Tour',venues:'Venue tours',travel:'Travel',explore:
   clans:'Clans',studio:'Character Studio',players:'Players',shop:'Shop',auctions:'Auctions',profile:'Profile',settings:'Settings',
   rules:'Rules & controls',setup:'Match setup'};
 let screen='home',match,selectedVenue=save.currentVenue,selectedHome=0,selectedAway=1,mode='single',identityDraft,spin=0,last=performance.now(),matchTime=0;
-let studioZoom=1,studioRotate=false,studioCycle=false,studioPadding=false,studioPose='Ready',strokeStart=0;
+const studioPoses=['Ready','Skate','Ring control','Victory','Look around'];
+const mascotChoices=[...'🦊 🐼 🐯 🦁 🐸 🐷 🐨 🐰 🐲 🦄 🦉 🐺 🐻 🐧 🦋 🐙 🦕 🐠 🦜 🦩 🐬 🦈 🐢 🦝 🐭 🐱 🐶 🐮 🦅 🐴 🐘 🦔'.split(' ')];
+let studioZoom=1,studioRotate=false,studioCycle=true,studioPadding=false,studioPose='Ready',strokeStart=0,studioAnimationInput;
 let demo=createMatch({clubs:clubs.slice(0,2).map(({name})=>name),demo:true});
 let currentEvent=-1,aim;
 const keys=new Set();
@@ -79,6 +81,7 @@ function gallery(identity,interactive=false){
   mount(pane);return pane;
 }
 function show(next){
+  $('panel').dataset.screen=next;
   screen=next;keys.clear();
   $('panel').classList.toggle('campaign-page',next==='map'||next==='venues'||next==='explore'||next==='travel');
   document.querySelectorAll('#home details').forEach(item=>{item.open=false;});
@@ -450,27 +453,91 @@ function finish(){
   $('result').showModal();
 }
 function profile(){
-  const form=element('form','','panel'),name=field('Display name','input',save.profile.name,{required:'',maxlength:'64'}),
-    handle=field('Username','input',save.profile.handle,{required:'',maxlength:'64'}),bio=field('Bio','textarea',save.profile.bio,{maxlength:'1000',rows:'3'});
-  const output=element('output');
+  const page=element('section','','sport-profile'), nav=element('nav','','sport-nav');
+  const back=button('←',()=>show('home')), close=button('×',()=>show('home'));
+  back.setAttribute('aria-label','Back');close.setAttribute('aria-label','Close profile');nav.append(back,close);
   const level=Math.floor((Math.sqrt(1+8*save.xp/1000)-1)/2);
-  const bar=document.createElement('progress');bar.className='stat-bar';bar.max=(level+1)*1000;bar.value=save.xp-level*(level+1)*500;
-  form.append(name.node,handle.node,bio.node,element('button','Save profile','primary'),output,element('h3','Level '+level),bar,
-    element('p',bar.value+' / '+bar.max+' XP · '+save.coins+' coins'),button('Character Studio',()=>show('studio')));
-  form.onsubmit=event=>{
-    event.preventDefault();
-    if(!name.input.value.trim()||!handle.input.value.trim()){output.textContent='Enter a display name and username.';return;}
-    Object.assign(save.profile,{name:name.input.value.trim(),handle:handle.input.value.trim(),bio:bio.input.value.trim()});
-    persist();output.textContent='Profile saved';
+  const cover=element('header','','sport-panel sport-cover'), avatar=element('div',save.profile.mascot||'⛸','sport-avatar');
+  const pencil=button('✎',()=>editProfile.showModal(),'sport-pencil');pencil.setAttribute('aria-label','Edit profile');avatar.append(pencil);
+  const identity=element('div'),connections=element('div','','sport-connections');
+  for (const name of ['Friends','Followers','Following']) {
+    const details=element('details'), summary=element('summary',name);
+    summary.prepend(element('strong','0'));details.append(summary,element('p','No '+name.toLowerCase()+' yet.'));connections.append(details);
+  }
+  identity.append(element('h1',save.profile.name),element('small','@'+save.profile.handle),connections,element('p',save.profile.bio),element('strong','Level '+level));
+  if(save.profile.youtube){
+    const link=element('a','YouTube channel');
+    link.href=save.profile.youtube;link.target='_blank';link.rel='noopener';identity.append(link);
+  }
+  cover.append(avatar,identity);
+  const preview=element('article','','sport-panel sport-preview'),caption=element('footer');
+  caption.append(element('span',save.profile.jerseyName||save.profile.name),button('Open Character Studio',()=>show('studio')));
+  preview.append(gallery({...save.profile}),caption);
+  const details=element('article','','sport-panel'),tabs=element('div','','actions'),content=element('div','','profile-tab-content');
+  const wins=save.games.filter(game=>game.score[0]>game.score[1]).length;
+  const stats=()=>[grid(...[['Matches',save.games.length],['Wins',wins],['Tour wins',save.wins.length],['XP',save.xp]].map(([label,value])=>card(element('strong',String(value),'metric'),element('small',label)))),
+    element('h3','Trophy case'),grid(...[['First win',wins>0],['Road win',save.wins.length>0],['Tour champion',save.wins.length===venues.length]].map(([label,earned])=>card(element('strong',label),element('small',earned?'Earned':'Locked'))))];
+  const views={
+    Stats:stats,Items:()=>[element('p',save.owned.length+' items owned'),...save.owned.map(item=>element('p',String(item)))],
+    Campaign:()=>[element('p',save.wins.length+' / '+venues.length+' cities won'),button('Open World Tour',()=>show('map'))],
+    Marketplace:()=>[element('p',save.coins+' coins'),button('Shop',()=>show('shop')),button('Auctions',()=>show('auctions'))],
+    Recordings:()=>[element('p','No recordings saved.')],
   };
-  return grid(form,gallery({...save.profile}));
+  for(const [label,render] of Object.entries(views)){
+    const tab=button(label,()=>{
+      for(const item of tabs.children)item.setAttribute('aria-pressed',String(item===tab));
+      content.replaceChildren(...render());
+    });tabs.append(tab);
+  }
+  tabs.firstElementChild.click();details.append(tabs,content);
+  const progress=element('footer','','sport-panel sport-xp'),bar=element('progress');
+  bar.max=(level+1)*1000;bar.value=save.xp-level*(level+1)*500;
+  progress.append(element('span','Level '+level),bar,element('span',bar.value+' / '+bar.max+' XP'));
+  const editProfile=profileEditor();
+  page.append(nav,cover,preview,details,progress,editProfile);
+  return page;
+}
+function profileEditor(){
+  const dialog=element('dialog','','sport-editor'),form=element('form'),heading=element('header');
+  const close=button('×',()=>dialog.close(),'sport-close');close.setAttribute('aria-label','Close edit profile');
+  heading.append(element('h2','Edit profile'),close);
+  let mascot=save.profile.mascot||'';
+  const mascots=element('fieldset'),options=element('div','','sport-mascots');
+  for(const [index,icon] of mascotChoices.entries()){
+    const choice=button(icon,()=>{
+      mascot=icon;
+      for(const option of options.children)option.setAttribute('aria-pressed',String(option===choice));
+    });
+    choice.setAttribute('aria-label','Mascot '+(index+1));choice.setAttribute('aria-pressed',String(icon===mascot));options.append(choice);
+  }
+  mascots.append(element('legend','Profile mascot'),options);
+  const handle=field('Username','input',save.profile.handle,{required:'',maxlength:'64',pattern:'[A-Za-z0-9_]+',title:'Change once every seven days'}),
+    name=field('Display name','input',save.profile.name,{required:'',maxlength:'64'}),
+    bio=field('Bio','textarea',save.profile.bio,{maxlength:'1000',rows:'4'}),
+    youtube=field('YouTube channel','input',save.profile.youtube||'',{type:'url',placeholder:'https://www.youtube.com/@channel'});
+  const status=element('p');status.setAttribute('role','status');
+  form.append(heading,mascots,handle.node,name.node,bio.node,youtube.node,status,element('button','Save changes','sport-save'));
+  form.onsubmit=(event)=>{
+    event.preventDefault();
+    const display=name.input.value.trim(), username=handle.input.value.trim(), channel=youtube.input.value.trim();
+    if(!display||!username){status.textContent='Enter a username and display name.';return;}
+    const changed=username!==save.profile.handle;
+    if(changed&&Date.now()-(save.profile.nameChanged||0)<604800000){status.textContent='You can change your username once every seven days.';return;}
+    if(channel&&!/^https:\/\/(?:www\.)?youtube\.com\/(?:@[^/?#]+|(?:channel|c|user)\/[^/?#]+)\/?$/i.test(channel)){
+      status.textContent='Enter a YouTube channel link.';return;
+    }
+    const existing=save.profile;
+    save.profile={...existing,name:display,handle:username,bio:bio.input.value.trim(),youtube:channel,mascot,nameChanged:changed?Date.now():existing.nameChanged};
+    try{persist();dialog.close();show('profile');}catch{save.profile=existing;status.textContent='Profile could not be saved.';}
+  };
+  dialog.append(form);return dialog;
 }
 function studio(){
-  spin=0;studioZoom=1;studioRotate=false;studioCycle=false;studioPadding=false;studioPose='Ready';strokeStart=0;
-  const form=element('form','','panel kit-editor'),stage=element('div','','studio-stage');
+  spin=0;studioZoom=1;studioRotate=false;studioCycle=!matchMedia('(prefers-reduced-motion: reduce)').matches;studioPadding=false;studioPose='Ready';strokeStart=performance.now();
+  const form=element('form','','sport-editor-side kit-editor'),stage=element('div','','sport-stage');
   const output=element('output');output.setAttribute('aria-live','polite');
   const pane=gallery({...save.profile},true);
-  const view=element('div','','actions studio-controls');
+  const view=element('div','','sport-motion');
   const toggle=(label,read,write)=>{
     const control=button(label,()=>{write(!read());control.setAttribute('aria-pressed',String(read()));});
     control.setAttribute('aria-pressed',String(read()));return control;
@@ -479,11 +546,14 @@ function studio(){
     button('−',()=>{studioZoom=Math.max(.8,studioZoom-.12);}),
     button('+',()=>{studioZoom=Math.min(1.65,studioZoom+.12);}),
     toggle('Auto rotate',()=>studioRotate,v=>studioRotate=v));
-  const motionControls=element('div','','actions studio-controls');
-  motionControls.append(choose('Pose',['Ready','Skate','Look around'].map(value=>({value,text:value})),studioPose,value=>studioPose=value),
-    toggle('Auto pose',()=>studioCycle,v=>{studioCycle=v;strokeStart=performance.now();}));
-  stage.append(pane,view,motionControls);
-  const sections=element('div','','kit-tabs'),groups=element('div','','kit-sections');
+  const poseControl=choose('Animation',studioPoses.map(value=>({value,text:value})),studioPose,value=>{
+    studioPose=value;studioCycle=false;playback.setAttribute('aria-pressed','false');
+  });
+  studioAnimationInput=poseControl.querySelector('select');
+  const playback=toggle('Autoplay',()=>studioCycle,v=>{studioCycle=v;strokeStart=performance.now();});
+  view.prepend(poseControl,playback);
+  stage.append(pane,view);
+  const sections=element('div','','sport-tabs'),groups=element('div','','sport-options');
   const addTab=(label,...items)=>{
     const group=element('div','','kit-group');group.append(...items);group.hidden=groups.children.length>0;
     const control=button(label,()=>{
@@ -540,9 +610,13 @@ function studio(){
   const hairChoice=choose('Hairstyle',Object.entries(hairPresets).map(([value,text])=>({value,text})),identityDraft.hairStyle,value=>{
     update('hairStyle',value);spin=Math.PI*.72;
   });
-  addTab('Appearance',grid(faceChoice,hairChoice),grid(collect('Skin tone','skin','color').node,collect('Hair color','hair','color').node,
+  addTab('Body',grid(faceChoice,hairChoice),grid(collect('Skin tone','skin','color').node,collect('Hair color','hair','color').node,
     collect('Height (cm)','height','number',{min:150,max:195,required:''}).node));
-  form.append(sections,groups,element('button','Save character','primary'),output);
+  const header=element('header','','sport-studio-head'),footer=element('footer','','sport-footer');
+  const closeStudio=button('×',()=>show('profile'));closeStudio.setAttribute('aria-label','Close Character Studio');
+  header.append(element('h1','Character Studio'),closeStudio);
+  footer.append(output,button('Cancel',()=>show('profile')),element('button','Save changes','sport-save'));
+  form.append(header,sections,groups,footer);
   form.onsubmit=event=>{
     event.preventDefault();
     const previous=save.profile;
@@ -550,7 +624,7 @@ function studio(){
     try{persist();output.textContent='Character saved';}
     catch{save.profile=previous;output.textContent='Character could not be saved. Check browser storage.';}
   };
-  return grid(stage,form);
+  const layout=element('div','','sport-studio');layout.append(stage,form);return layout;
 }
 function players(){
   spin=0;
@@ -590,8 +664,14 @@ function store(auction){
   const wrapper=document.createElement('div');wrapper.append(out,grid(...offers));return wrapper;
 }
 function settings(){
-  return card(choose('Quick match length',[{value:120,text:'2 minutes'},{value:180,text:'3 minutes'},{value:300,text:'5 minutes'}],save.period,
-    value=>{save.period=Number(value);persist();}),button(save.mutedMotion?'Play home background':'Pause home background',()=>{toggleMotion();show('settings');}));
+  return settingsView([
+    {title:'Gameplay',rows:[{key:'period',title:'Period length',help:'Length of a regulation period in a quick match.',numeric:true,options:[[120,'2 minutes'],[180,'3 minutes'],[300,'5 minutes']]}]},
+    {title:'Camera & display',rows:[{key:'camera',title:'Match camera',help:'Choose how close the camera sits to the ice.',options:[['broadcast','Broadcast'],['close','Close']]}]},
+    {title:'Accessibility',rows:[{key:'mutedMotion',title:'Pause home highlights',help:'Keep the background still on the main menu.'}]},
+  ],Object.assign(save,{camera:save.camera||'broadcast'}),(key,value)=>{
+    if(key==='mutedMotion'&&value!==save.mutedMotion){toggleMotion();return;}
+    save[key]=value;persist();
+  },()=>show('home'),{period:180,camera:'broadcast',mutedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches});
 }
 function rules(){
   return card(element('h2','On the ice'),
@@ -680,7 +760,7 @@ function frame(time){
       tick(match,[p1,arrows],dt);matchTime+=dt;paintScore();
       if(match.ended)finish();
     }
-    rink.draw(match,'match',matchTime,save.profile);
+    rink.draw(match,'match',matchTime,save.profile,0,save.camera==='close'?1.19:1);
   }else if(screen==='venues')rink.draw(demo,'venues',time/1000,save.profile,mapAngle.y);
   else if(screen==='map'&&mapView==='globe')rink.draw({venues,index:selectedVenue,angle:mapAngle},'globe',time/1000,save.profile);
   else if(screen==='travel'){
@@ -690,7 +770,8 @@ function frame(time){
     updateWalk(dt);rink.draw(walk,'explore',time/1000,save.profile);
   }else if(['profile','studio','players'].includes(screen)){
     if(screen==='studio'&&studioRotate)spin=(spin+dt*.62)%(Math.PI*2);
-    const pose=studioCycle?['Ready','Skate','Look around'][Math.floor(Math.max(0,time-strokeStart)/3400)%3]:studioPose;
+    const pose=studioCycle?studioPoses[Math.floor(Math.max(0,time-strokeStart)/3400)%studioPoses.length]:studioPose;
+    if(screen==='studio'&&studioCycle&&studioAnimationInput.value!==pose)studioAnimationInput.value=pose;
     rink.draw(null,screen,time/1000,identityDraft,screen==='profile'?0:spin,screen==='studio'?studioZoom:1,screen==='studio'?pose:'Ready',screen==='studio'&&studioPadding);
   }
 }
@@ -699,3 +780,4 @@ requestAnimationFrame(frame);
 
 
 
+import {settingsView} from './sport-settings.js';

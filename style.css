@@ -31,6 +31,12 @@ dialog{width:min(92vw,29rem);background:var(--panel);border:1px solid var(--edge
 .venue-location{font-size:.78rem;font-weight:800;color:#b9dcea}.tour-actions{display:grid;grid-template-columns:auto 1fr auto;gap:.4rem;margin:.95rem 0 .7rem}
 .travel-wrap{position:relative}.visit-rink{height:calc(100dvh - 4.15rem);min-height:440px}.visit-hud{position:absolute;top:.85rem;left:.85rem;max-width:calc(100% - 1.7rem);padding:.85rem .98rem;background:#122634ed;border:1px solid var(--edge);border-radius:.65rem}.visit-hud button{margin-right:.36rem}
 @media(max-width:740px){.tour-grid{grid-template-columns:1fr}.tour-stops{grid-template-columns:repeat(5,minmax(0,1fr))}.kit-group .grid{grid-template-columns:1fr}.studio-stage .portrait{height:clamp(19rem,50vh,28rem)}}
+#panel:is([data-screen=profile],[data-screen=studio],[data-screen=settings]){width:100%;max-width:none;padding:0}
+#panel:is([data-screen=profile],[data-screen=studio],[data-screen=settings])>header{display:none}
+#panel[data-screen=profile]{background:#141915;min-height:100dvh}
+.profile-tab-content{margin-top:1rem}.profile-tab-content .panel{display:grid;gap:.25rem;background:#242d27;border-color:#465248}
+.sport-motion label{display:flex;align-items:center;gap:.35rem;margin:0}
+.sport-studio .sport-stage .viewport{position:absolute;inset:0}
 
 .campus-hud{position:absolute;inset:0;pointer-events:none}.campus-hud button{pointer-events:auto}.campus-location p{margin:0}.campus-actions{position:absolute;top:.8rem;right:.85rem;display:flex;gap:.45rem}.campus-hint{position:absolute;left:.85rem;bottom:.7rem;margin:0;padding:.4rem .6rem;background:#102031ee;border-radius:.4rem;color:#dbe7f1;font-size:.76rem}
 .campus-interact{position:absolute;bottom:3.2rem;left:50%;transform:translateX(-50%);box-shadow:0 6px 20px #0006}.campus-map-box{position:absolute;right:.9rem;bottom:.9rem;background:#112434ee;border:1px solid var(--edge);border-radius:.6rem;overflow:hidden;width:clamp(9rem,17vw,13rem)}.campus-map-box button{width:100%;border:0;border-radius:0;text-align:left;padding:.43rem .61rem;font-size:.78rem}.campus-minimap{display:block;width:100%;height:auto}.campus-minimap[hidden]{display:none}.visit-rink{touch-action:none;cursor:grab}.visit-rink:active{cursor:grabbing}
