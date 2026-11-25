@@ -4,6 +4,7 @@ import {createReadStream,statSync} from 'node:fs';
 const files = new Map([
   ['/',['index.html','text/html']], ['/index.html',['index.html','text/html']],
   ['/style.css',['style.css','text/css']],
+  ['/skater-face.jpg',['skater-face.jpg','image/jpeg']],
   ...['app','engine','rink','crowd','world-land','campus'].map(name=>['/'+name+'.js',[name+'.js','text/javascript']]),
   ...['three.module.js','three.core.js'].map(name=>['/vendor/'+name,['node_modules/three/build/'+name,'text/javascript']]),
 ]);
@@ -15,7 +16,7 @@ createServer((request,response)=>{
   const file = new URL(entry[0],import.meta.url);
   try{
     const stat=statSync(file);
-    response.writeHead(200,{'Content-Type':entry[1]+'; charset=utf-8','Content-Length':stat.size,'Cache-Control':'no-cache'});
+    response.writeHead(200,{'Content-Type':entry[1],'Content-Length':stat.size,'Cache-Control':'no-cache'});
     if(request.method==='HEAD')response.end();
     else createReadStream(file).on('error',()=>response.destroy()).pipe(response);
   }catch{response.writeHead(404).end();}

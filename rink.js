@@ -101,8 +101,22 @@ const athleteFaces=[
   {skin:0xd19b7c,hair:0x513629,eyes:0x554e37,width:1,length:.97,hairStyle:0},
   {skin:0xe4ab9e,hair:0x573f37,eyes:0x465d66,width:1.02,length:.98,hairStyle:2},
 ];
+export const facePresets=['Reference','Soft jaw','Oval','Angular','High cheekbones','Long face'];
+export const hairPresets={tucked:'Tucked short',ponytail:'Low ponytail',braid:'Single braid',double:'Twin braids',bun:'Low bun'};
+const defaultHair=['tucked','ponytail','braid'];
 const detailedSphere=new THREE.SphereGeometry(1,24,18);
-const helmetShell=new THREE.SphereGeometry(1,32,18,0,Math.PI*2,0,Math.PI*.55);
+function helmetGeometry(){
+  const geometry=new THREE.SphereGeometry(1,64,32,0,Math.PI*2,0,Math.PI*.62);
+  const p=geometry.attributes.position;
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+    const widen=v=>Math.sign(v)*Math.pow(Math.abs(v),.82);
+    const rim=Math.max(0,1-y*1.4);
+    p.setXYZ(i,widen(x)*.154,.070+y*.135+rim*(.036*Math.max(0,z)-.060*Math.max(0,-z)),widen(z)*.147-.024);
+  }
+  geometry.computeVertexNormals();return geometry;
+}
+const helmetShell=helmetGeometry();
 const shaftShape=new THREE.BoxGeometry();
 const padOutline=new THREE.Shape();
 padOutline.moveTo(-.5,-.37);padOutline.quadraticCurveTo(-.5,-.5,-.37,-.5);
@@ -134,8 +148,21 @@ function fabricShape(rows,depth,strength){
 const jerseyShape=fabricShape([[.724,0],[.728,.243],[.747,.263],[.84,.259],[.98,.244],[1.13,.244],[1.26,.255],[1.34,.246],[1.398,.193],[1.438,.119],[1.452,0]],.64,.041);
 const hemShape=contour([[.738,.250],[.743,.264],[.752,.263]],.64);
 const pantsShape=contour([[.71,0],[.74,.211],[.81,.259],[.93,.255],[.97,.203],[.98,0]],.65);
-const trouserShape=fabricShape([[-.740,0],[-.725,.080],[-.696,.096],[-.624,.090],[-.504,.098],[-.402,.107],[-.30,.111],[-.167,.112],[-.055,.102],[.039,.070],[.062,0]],.86,.083);
-function sculptFace(){
+function trouserGeometry(){
+  const geometry=fabricShape([[-.756,.052],[-.737,.095],[-.701,.101],[-.627,.096],[-.504,.103],[-.402,.112],[-.30,.118],[-.167,.115],[-.055,.104],[.039,.070],[.062,0]],.89,.069);
+  const p=geometry.attributes.position;
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+    const cuff=1-THREE.MathUtils.smoothstep(y,-.733,-.55);
+    const front=Math.max(0,z)/Math.max(.001,Math.hypot(x,z));
+    p.setZ(i,z+cuff*(.054+front*.053));
+    p.setY(i,y+cuff*(1-front)*.033);
+  }
+  geometry.computeVertexNormals();return geometry;
+}
+const trouserShape=trouserGeometry();
+const linerShape=fabricShape([[-.723,.048],[-.676,.063],[-.557,.064],[-.410,.073],[-.287,.082],[-.131,.091],[-.045,.090],[.045,.068],[.060,0]],.93,.025);
+function sculptFace(variant){
   const profile=[[-.153,0],[-.145,.047],[-.118,.085],[-.074,.115],[-.014,.133],[.060,.137],[.109,.122],[.148,.080],[.161,0]];
   const curve=new THREE.CatmullRomCurve3(profile.map(([y,r])=>new THREE.Vector3(r,y,0)));
   const geometry=new THREE.LatheGeometry(curve.getPoints(58).map(({x,y})=>new THREE.Vector2(Math.max(0,x),y)),64);
@@ -144,15 +171,58 @@ function sculptFace(){
   const bump=(x,y,cx,cy,rx,ry)=>Math.exp(-((x-cx)**2/rx**2+(y-cy)**2/ry**2));
   for(let i=0;i<xyz.count;i++){
     const x=xyz.getX(i),y=xyz.getY(i),z=xyz.getZ(i);
+    const jaw=[0,.105,.012,-.085,-.055,-.07][variant];
+    const cheeks=[0,-.014,-.040,.020,.075,-.032][variant];
+    xyz.setX(i,x*(1+jaw*Math.exp(-(((y+.10)/.047)**2))+cheeks*Math.exp(-(((y+.022)/.056)**2))));
     if(z<=0)continue;
-    const nose=.020*bump(x,y,0,.009,.023,.052)+.029*bump(x,y,0,-.024,.027,.022);
+    const bridge=[.020,.015,.017,.024,.020,.026][variant];
+    const nose=bridge*bump(x,y,0,.009,.023,.052)+.029*bump(x,y,0,-.024,.027,.022);
     const cheek=.008*bump(Math.abs(x),y,.082,-.021,.040,.033);
     const orbit=-.008*bump(Math.abs(x),y,.060,.034,.031,.021);
     xyz.setZ(i,z+nose+cheek+orbit+.008*bump(x,y,0,-.080,.051,.028));
   }
   geometry.computeVertexNormals();return geometry;
 }
-const jawShape=sculptFace();
+const faceMeshes=new Map();
+function faceGeometry(variant){
+  if(!faceMeshes.has(variant))faceMeshes.set(variant,sculptFace(variant));
+  return faceMeshes.get(variant);
+}
+const faceMap=new THREE.Texture();
+faceMap.colorSpace=THREE.SRGBColorSpace;
+faceMap.anisotropy=4;
+const texturedFaces=[];
+const facePhoto=new Image();
+facePhoto.onload=()=>{
+  faceMap.image=facePhoto;faceMap.needsUpdate=true;
+  for(const {features,uniform} of texturedFaces){features.visible=false;uniform.value=1;}
+};
+facePhoto.src=new URL('./skater-face.jpg',import.meta.url).href;
+function projectFace(surface,features){
+  const skin=surface.material,base=new THREE.Color(0xc48f74),active={value:facePhoto.complete&&facePhoto.naturalWidth>0?1:0};
+  features.visible=active.value===0;
+  texturedFaces.push({features,uniform:active});
+  skin.customProgramCacheKey=()=>'ringette-face-projection';
+  skin.onBeforeCompile=shader=>{
+    shader.uniforms.faceAlbedo={value:faceMap};shader.uniforms.faceBaseline={value:base};shader.uniforms.useFaceAlbedo=active;
+    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 faceLocal;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nfaceLocal=position;');
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',`#include <common>
+      varying vec3 faceLocal;
+      uniform sampler2D faceAlbedo;
+      uniform vec3 faceBaseline;
+      uniform float useFaceAlbedo;`)
+      .replace('#include <map_fragment>',`#include <map_fragment>
+        vec2 faceUV=vec2(0.504+faceLocal.x*2.51,0.485+faceLocal.y*2.68);
+        float edge=(1.0-smoothstep(0.112,0.129,abs(faceLocal.x))) * smoothstep(0.024,0.092,faceLocal.z);
+        edge*=smoothstep(-0.148,-0.118,faceLocal.y)*(1.0-smoothstep(0.072,0.108,faceLocal.y));
+        if(useFaceAlbedo>0.5){
+          vec3 portrait=texture2D(faceAlbedo, faceUV).rgb;
+          vec3 complexion=clamp(diffuseColor.rgb / faceBaseline,0.08,3.0);
+          diffuseColor.rgb=mix(diffuseColor.rgb, portrait*complexion, edge);
+        }`);
+  };
+}
 const sleeveShape=contour([[-.54,0],[-.54,.68],[-.41,.80],[-.18,.92],[.16,1],[.43,.91],[.54,.70],[.54,0]],1);
 const ovalDetail=(parent,mat,x,y,z,w,h,d)=>mesh(parent,detailedSphere,mat,[x,y,z],[w,h,d]);
 function sleeve(parent,mat,from,to,width){
@@ -165,8 +235,8 @@ const skaterGarments=new Map();
 function tailoredJersey(relaxed){
   if(skaterGarments.has(relaxed))return skaterGarments.get(relaxed);
   const columns=48,rows=36,sides=[{side:1,from:8,to:16},{side:-1,from:32,to:40}];
-  const low=24,high=34,origin=.727,height=.724;
-  const profileRows=[[0,.238,.145],[.06,.256,.156],[.25,.245,.145],[.55,.240,.146],[.73,.257,.160],[.88,.251,.148],[1,.104,.083]];
+  const low=24,high=34,origin=.734,height=.726;
+  const profileRows=[[0,.244,.139],[.07,.250,.146],[.25,.231,.140],[.52,.233,.155],[.72,.246,.163],[.86,.243,.152],[.94,.186,.117],[1,.103,.078]];
   const positions=[],uvs=[],indices=[];
   const vertex=(p,u,v)=>{const index=positions.length/3;positions.push(p.x,p.y,p.z);uvs.push(u,v);return index;};
   const vertexAt=(row,col)=>row*(columns+1)+col;
@@ -179,8 +249,9 @@ function tailoredJersey(relaxed){
       const theta=col/columns*2*Math.PI,side=Math.sin(theta),front=Math.cos(theta);
       // A lower neck opening at the front keeps the collar from reading as a raised band.
       const opening=Math.pow(Math.max(0,v-.89)/.11,2)*Math.max(0,front)*.033;
-      const drape=.0038*Math.sin(theta*7+v*6)*(1-Math.abs(.5-v))+.0044*Math.cos(theta*4-v*13);
-      vertex(new THREE.Vector3((wide+drape)*side,y-opening,(deep+drape)*front),col/columns,v);
+      const sag=.011*(.35+.65*Math.abs(front))*Math.pow(1-v,7)*Math.cos(theta*3+.6);
+      const drape=(Math.sin(theta*7+v*6)*.003+Math.cos(theta*13-v*5)*.004)*(1-Math.pow(v,4))+.0029*Math.cos(theta*4-v*13);
+      vertex(new THREE.Vector3((wide+drape)*side,y-opening+sag,(deep+drape)*front),col/columns,v);
       if(!row||!col||row>low&&row<=high&&sides.some(({from,to})=>col>from&&col<=to))continue;
       const old=vertexAt(row-1,col-1),next=vertexAt(row,col-1);
       indices.push(old,old+1,next,old+1,next+1,next);
@@ -195,9 +266,9 @@ function tailoredJersey(relaxed){
     for(let row=low;row<high;row++)edge.push(vertexAt(row,from));
     const centre=edge.reduce((sum,value)=>sum.add(pointAt(value)),new THREE.Vector3()).divideScalar(edge.length);
     const hand=relaxed?(side===1?[.325,.770,.099]:[-.287,.775,.189]):side===1?[.17,.768,.584]:[-.28,1.06,.405];
-    const elbow=relaxed?[side*.296,1.063,.020]:[side*.328,1.067,side===1?.27:.14];
+    const elbow=relaxed?[side*.279,1.054,.031]:[side*.328,1.067,side===1?.27:.14];
     const wrist=elbow.map((value,i)=>(value+hand[i]*6)/7);
-    const points=[centre,centre.clone().lerp(new THREE.Vector3(...elbow),.40).add(new THREE.Vector3(side*.048,0,0)),new THREE.Vector3(...elbow),new THREE.Vector3(...wrist)];
+    const points=[centre,centre.clone().lerp(new THREE.Vector3(...elbow),.40).add(new THREE.Vector3(side*(relaxed?.039:.048),0,0)),new THREE.Vector3(...elbow),new THREE.Vector3(...wrist)];
     const path=new THREE.CatmullRomCurve3(points);
     const axis=new THREE.Vector3(side,0,0);
     const seam=edge.map(i=>{
@@ -208,9 +279,9 @@ function tailoredJersey(relaxed){
     for(let row=1;row<=28;row++){
       const t=row/28,centre=path.getPoint(t),tangent=path.getTangent(t);
       const twist=new THREE.Quaternion().setFromUnitVectors(axis,tangent);
-      const blend=THREE.MathUtils.smoothstep(t,0,.39),radius=.096-.036*t;
+      const blend=THREE.MathUtils.smoothstep(t,0,.37),radius=.100-.034*t;
       const ring=edge.map((i,j)=>{
-        const fold=1+Math.sin(t*31+j*.45)*.041*Math.sin(t*Math.PI);
+        const fold=1+Math.sin(t*31+j*.45)*.042*Math.sin(t*Math.PI)+Math.sin(t*46+j*.24)*.026*Math.pow(t,3);
         const target=centre.clone().addScaledVector(seam[j].clone().applyQuaternion(twist),radius*fold);
         const offset=path.getPoint(t*.52).sub(points[0]);
         const local=pointAt(i).add(offset).lerp(target,blend);
@@ -237,8 +308,7 @@ function tailoredJersey(relaxed){
   }
   skaterGarments.set(relaxed,geometry);return geometry;
 }
-function dressLeg(thigh,root,shin,pants){
-  const geometry=trouserShape;
+function dressLeg(thigh,root,shin,pants,geometry=trouserShape){
   if(!geometry.attributes.skinIndex){
     const indices=[],weights=[],position=geometry.attributes.position;
     for(let i=0;i<position.count;i++){
@@ -251,6 +321,7 @@ function dressLeg(thigh,root,shin,pants){
   const leg=new THREE.SkinnedMesh(geometry,pants);leg.frustumCulled=false;
   thigh.add(leg);thigh.updateWorldMatrix(true,true);
   leg.bind(new THREE.Skeleton([root,shin]));
+  return leg;
 }
 function makeFabric(){
   const canvas=document.createElement('canvas');canvas.width=canvas.height=64;
@@ -273,84 +344,201 @@ function rod(parent,mat,a,b,w,d=w){
 }
 function wire(parent,mat,points,radius){
   const path=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));
-  return mesh(parent,new THREE.TubeGeometry(path,10,radius,5,false),mat,[0,0,0],[1,1,1]);
+  return mesh(parent,new THREE.TubeGeometry(path,Math.max(10,points.length*2),radius,5,false),mat,[0,0,0],[1,1,1]);
 }
-function buildHead(parent,features,trim,goalie){
+function hairstyle(parent,base,trim,style){
+  const group=new THREE.Group();parent.add(group);
+  const strands=base.clone();strands.color.multiplyScalar(1.24);
+  const shade=base.clone();shade.color.multiplyScalar(.76);
+  const paths=[];
+  if(style==='ponytail')paths.push([[0,-.038,-.141],[.017,-.087,-.187],[.053,-.175,-.211],[.047,-.256,-.203]]);
+  if(style==='braid')paths.push([[0,-.044,-.147],[.01,-.135,-.189],[.009,-.245,-.204],[.030,-.327,-.216]]);
+  if(style==='double')for(const side of [-1,1])paths.push([[side*.076,-.036,-.120],[side*.118,-.113,-.152],[side*.122,-.210,-.148],[side*.103,-.274,-.179]]);
+  if(style==='bun'){
+    const anchor=[0,-.064,-.171];
+    ovalDetail(group,base,...anchor,.061,.050,.056);
+    for(let i=0;i<7;i++){
+      const a=i*2*Math.PI/7;
+      const points=Array.from({length:9},(_,j)=>{
+        const t=j/8,theta=a+t*.88,r=.053*Math.sin(Math.PI*t);
+        return [Math.cos(theta)*r,anchor[1]+.045*Math.cos(Math.PI*t),anchor[2]-.020-Math.sin(theta)*r*.62];
+      });
+      wire(group,i%2?strands:shade,points,.0019);
+    }
+  }
+  for(const points of paths){
+    const path=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));
+    const braided=style==='braid'||style==='double';
+    const radius=style==='double'?.021:.033;
+    for(let strand=0;strand<(braided?3:9);strand++){
+      const samples=Array.from({length:27},(_,j)=>{
+        const t=j/26,p=path.getPoint(t),angle=(braided?t*25:t*.8)+strand*2*Math.PI/(braided?3:9);
+        const taper=.32+.68*Math.sin(Math.PI*(.23+.77*t));
+        const swell=radius*taper*(braided?.56:.66);
+        return [p.x+Math.cos(angle)*swell,p.y,p.z+Math.sin(angle)*swell];
+      });
+      wire(group,[base,strands,shade][strand%3],samples,radius*(braided?.53:.36));
+    }
+    wire(group,trim,[[points[0][0]-.023,points[0][1]-.011,points[0][2]],[points[0][0],points[0][1]-.012,points[0][2]-.020],[points[0][0]+.023,points[0][1]-.011,points[0][2]]],.005);
+    if(braided){const end=path.getPoint(.94);ovalDetail(group,trim,end.x,end.y,end.z,.015,.009,.016);}
+  }
+  return {group,base,strands,shade};
+}
+const neckShape=contour([[1.397,.086],[1.431,.076],[1.471,.066],[1.501,.065],[1.531,.074],[1.548,.069],[1.549,0]],.86);
+function buildHead(parent,features,trim,goalie,variant){
   const head=new THREE.Group();
-  head.position.set(0,1.65,.065);head.scale.set(features.width,features.length,1);
+  head.position.set(0,1.642,.054);head.scale.set(features.width*.97,features.length*1.018,.97);
   parent.add(head);
   const skin=material(features.skin,.61), hair=material(features.hair,.80);
   const iris=material(features.eyes,.40), dark=material(0x201d21,.42), pearl=material(0xf1ebe4,.48);
   const lip=material(new THREE.Color(features.skin).multiplyScalar(.63).lerp(new THREE.Color(0x9f4f50),.40));
-  const helmet=new THREE.MeshStandardMaterial({color:goalie?0xeaf4f6:0x15191e,roughness:.25,metalness:.18});
-  const cage=new THREE.MeshStandardMaterial({color:goalie?0x90a2af:0x31373d,metalness:.48,roughness:.34});
-  ovalDetail(parent,skin,0,1.468,.027,.077,.089,.073);
-  mesh(head,jawShape,skin,[0,0,0],[1,1,1]);
-  wire(head,lip,[[-.031,-.080,.102],[-.012,-.079,.110],[0,-.081,.111],[.013,-.079,.110],[.031,-.080,.102]],.0046);
-  wire(head,lip,[[-.026,-.086,.103],[0,-.090,.110],[.026,-.086,.103]],.0043);
+  const helmet=new THREE.MeshPhysicalMaterial({color:goalie?0xeaf4f6:0x15191e,roughness:.31,metalness:.18,clearcoat:.46,clearcoatRoughness:.35});
+  const cage=new THREE.MeshStandardMaterial({color:goalie?0x90a2af:0x4f575d,metalness:.5,roughness:.31});
+  const polymer=material(0x141719,.72), lining=material(0x292c30,.90), screws=material(0x949c9e,.34);
+  mesh(parent,neckShape,skin,[0,0,.013],[1,1,1]);
+  const surface=mesh(head,faceGeometry(variant),skin,[0,0,0],[1,1,1]);
+  const featuresOnFace=new THREE.Group();head.add(featuresOnFace);
+  wire(featuresOnFace,lip,[[-.031,-.080,.102],[-.012,-.079,.110],[0,-.081,.111],[.013,-.079,.110],[.031,-.080,.102]],.0046);
+  wire(featuresOnFace,lip,[[-.026,-.086,.103],[0,-.090,.110],[.026,-.086,.103]],.0043);
   const eyeGroups=[];
   const brow=material(new THREE.Color(features.hair).lerp(new THREE.Color(features.skin),.30));
   for(const side of [-1,1]){
     ovalDetail(head,skin,side*.127,.001,.002,.018,.034,.024);
-    const eye=new THREE.Group();eye.position.set(side*.053,.034,.103);eye.rotation.z=side*.08;head.add(eye);eyeGroups.push(eye);
+    const eye=new THREE.Group();eye.position.set(side*.053,.034,.103);eye.rotation.z=side*.08;featuresOnFace.add(eye);eyeGroups.push(eye);
     ovalDetail(eye,pearl,0,0,0,.025,.010,.009);
     ovalDetail(eye,iris,-side*.001,0,.008,.010,.010,.004);
     ovalDetail(eye,dark,-side*.001,0,.011,.005,.006,.002);
     ovalDetail(eye,pearl,-.004,.004,.013,.002,.002,.001);
     wire(eye,brow,[[-.025,0,-.001],[-.011,.009,.007],[.009,.009,.007],[.024,0,-.001]],.0021);
-    wire(head,brow,[[side*.024,.059,.112],[side*.043,.064,.110],[side*.063,.063,.102],[side*.082,.057,.092]],.0038);
-    ovalDetail(head,helmet,side*.137,.021,-.018,.025,.066,.077);
-    ovalDetail(head,helmet,side*.146,.046,-.046,.017,.022,.041);
-    wire(head,cage,[[side*.135,.048,.02],[side*.124,.040,.128],[side*.100,.001,.165],[side*.064,-.114,.153],[side*.038,-.135,.119]],.006);
+    wire(featuresOnFace,brow,[[side*.024,.059,.112],[side*.043,.064,.110],[side*.063,.063,.102],[side*.082,.057,.092]],.0038);
+    const innerPad=mesh(head,padShape,lining,[side*.128,.004,-.021],[.026,.102,.112]);innerPad.rotation.x=-.22;
+    const earCover=mesh(head,padShape,helmet,[side*.143,.001,-.019],[.027,.089,.100]);earCover.rotation.x=-.24;
+    ovalDetail(head,polymer,side*.154,.005,-.019,.005,.025,.029);
+    ovalDetail(head,screws,side*.159,.038,.010,.004,.007,.007);
+    wire(head,cage,[[side*.141,.047,.027],[side*.130,.028,.114],[side*.117,-.035,.151],[side*.077,-.126,.149],[side*.040,-.148,.129]],.0046);
   }
-  ovalDetail(head,hair,0,.066,-.085,.136,.091,.056);
-  if(features.hairStyle){
-    const tail=ovalDetail(head,hair,features.hairStyle===1?.037:-.039,-.137,-.153,.039,features.hairStyle===1?.102:.059,.044);
-    tail.rotation.z=features.hairStyle===1?-.29:.33;
-    ovalDetail(head,trim,tail.position.x,-.069,-.146,.033,.021,.038);
+  ovalDetail(head,hair,0,.040,-.078,.121,.102,.071);
+  const styles=new Map();
+  let currentHair;
+  function setHair(style,color){
+    const selected=Object.hasOwn(hairPresets,style)?style:defaultHair[features.hairStyle];
+    if(!styles.has(selected))styles.set(selected,hairstyle(head,hair,trim,selected));
+    if(currentHair)currentHair.group.visible=false;
+    currentHair=styles.get(selected);currentHair.group.visible=true;
+    hair.color.set(color??features.hair);
+    currentHair.strands.color.copy(hair.color).multiplyScalar(1.24);
+    currentHair.shade.color.copy(hair.color).multiplyScalar(.76);
+    return currentHair.group;
   }
-  mesh(head,helmetShell,helmet,[0,.081,-.017],[.155,.120,.153]);
-  wire(head,helmet,[[-.146,.071,-.040],[-.110,.081,.084],[0,.084,.133],[.110,.081,.084],[.146,.071,-.040]],.009);
+  setHair(undefined);
+  mesh(head,helmetShell,helmet,[0,0,0],[1,1,1]);
   for(const side of [-1,1]){
-    wire(head,cage,[[side*.042,.182,.063],[side*.066,.156,.097],[side*.071,.125,.116]],.0038);
-    ovalDetail(head,cage,side*.116,.064,.082,.010,.010,.006);
-    wire(head,helmet,[[side*.092,-.081,.144],[side*.068,-.135,.137],[0,-.157,.104]],.010);
+    wire(head,lining,[[side*.133,-.018,.028],[side*.151,-.014,-.026],[side*.136,-.031,-.076],[side*.092,-.061,-.123]],.0068);
+    wire(head,helmet,[[side*.041,.193,-.009],[side*.066,.179,-.047],[side*.100,.149,-.082],[side*.125,.108,-.112]],.0053);
+    wire(head,polymer,[[side*.073,.173,.030],[side*.104,.155,.034],[side*.129,.125,.031]],.0033);
   }
-  for(const [y,w,z] of [[.009,.107,.167],[-.043,.094,.180],[-.091,.070,.171],[-.135,.038,.124]]){
-    wire(head,cage,[[-w,y,z-.034],[0,y-.007,z],[w,y,z-.034]],.0048);
+  for(const lift of [0,.019])wire(head,helmet,[[-.147,.035+lift,.022],[-.110,.067+lift,.096],[0,.081+lift,.124],[.110,.067+lift,.096],[.147,.035+lift,.022]],.0078);
+  wire(head,lining,[[-.119,.049,.096],[-.073,.063,.133],[0,.069,.147],[.073,.063,.133],[.119,.049,.096]],.0045);
+  for(const side of [-1,1]){
+    for(const lift of [0,.019,.035]){
+      wire(head,polymer,[[side*.047,.155+lift,.082],[side*.079,.142+lift,.089],[side*.101,.118+lift,.095]],.004);
+    }
+    ovalDetail(head,screws,side*.115,.064,.091,.006,.006,.007);
+    wire(head,helmet,[[side*.103,-.066,.143],[side*.078,-.129,.148],[side*.039,-.149,.128],[0,-.148,.132]],.0078);
+    wire(head,polymer,[[side*.137,-.026,.024],[side*.127,-.074,.064],[side*.087,-.123,.106]],.008);
+  }
+  for(const [y,w,z] of [[.047,.113,.150],[.020,.117,.165],[-.014,.118,.172],[-.048,.106,.176],[-.086,.094,.172],[-.117,.068,.159],[-.139,.045,.143]]){
+    wire(head,cage,[[-w,y,z-.047],[-w*.52,y-.003,z-.012],[0,y-.007,z],[w*.52,y-.003,z-.012],[w,y,z-.047]],.0029);
   }
   for(const side of [-1,1]){
-    wire(head,cage,[[side*.097,.014,.147],[side*.060,-.045,.169],[side*.026,-.091,.171],[0,-.140,.133]],.0043);
-    wire(head,cage,[[side*.034,.010,.167],[side*.067,-.045,.165],[side*.066,-.094,.150]],.0043);
+    for(const x of [.037,.074,.105]){
+      wire(head,cage,[[side*x,.049,.151-.48*x*x],[side*x*1.02,-.010,.175-.62*x*x],[side*x*.85,-.073,.174-.95*x*x],[side*x*.44,-.136,.148-.76*x*x]],.0027);
+    }
   }
-  return {head,skin,hair,helmet,eyeGroups};
+  if(variant===0&&!goalie)projectFace(surface,featuresOnFace);
+  return {head,skin,helmet,eyeGroups,setHair};
 }
+function bladeProfile(){
+  const outline=new THREE.Shape();
+  outline.moveTo(-.145,-.033);outline.quadraticCurveTo(-.137,-.055,-.106,-.061);
+  outline.bezierCurveTo(-.02,-.071,.135,-.071,.174,-.053);outline.quadraticCurveTo(.195,-.047,.194,-.035);
+  outline.lineTo(.14,-.034);outline.lineTo(.129,-.012);outline.lineTo(.079,-.012);outline.lineTo(.071,-.036);
+  outline.lineTo(-.065,-.037);outline.lineTo(-.075,-.014);outline.lineTo(-.12,-.014);outline.lineTo(-.13,-.034);outline.closePath();
+  const geometry=new THREE.ExtrudeGeometry(outline,{depth:.010,steps:1,bevelEnabled:false,curveSegments:12});
+  geometry.translate(0,0,-.005);geometry.rotateY(-Math.PI/2);return geometry;
+}
+const runner=bladeProfile();
+function sculptVamp(){
+  const shape=[[-.151,.032,.079],[-.126,.060,.113],[-.090,.071,.143],[-.045,.066,.133],[0,.070,.108],
+    [.042,.076,.082],[.094,.076,.064],[.142,.065,.057],[.175,.044,.040],[.192,.012,.022]];
+  const section=new THREE.CatmullRomCurve3(shape.map(([z,w,h])=>new THREE.Vector3(w,h,z)));
+  const positions=[],indices=[];
+  const segments=22;
+  for(const [row,entry] of section.getPoints(33).entries()){
+    for(let i=0;i<=segments;i++){
+      const phi=i/segments*Math.PI*2;
+      positions.push(Math.sin(phi)*Math.max(.006,entry.x),.014+entry.y*(.5+.5*Math.cos(phi)),entry.z);
+      if(!i||!row)continue;
+      const v=row*(segments+1)+i;
+      indices.push(v-segments-2,v-1,v-segments-1,v-segments-1,v-1,v);
+    }
+  }
+  const geometry=new THREE.BufferGeometry();geometry.setIndex(indices);
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.computeVertexNormals();
+  return geometry;
+}
+const vamp=sculptVamp();
 function boot(parent,side,trim,equipment,steel,dark){
   const foot=new THREE.Group();
   foot.position.set(0,-.364,.11);
-  foot.scale.x=.82;
+  foot.scale.x=.83;
   parent.add(foot);
-  ovalDetail(foot,equipment,0,.087,-.075,.087,.111,.096);
-  ovalDetail(foot,equipment,0,.041,.032,.092,.060,.173);
-  ovalDetail(foot,dark,0,.031,.127,.082,.045,.079);
-  ovalDetail(foot,trim,side*.083,.092,-.071,.012,.027,.069);
-  for(let i=0;i<5;i++){
-    const z=.040+i*.020;
-    wire(foot,steel,[[-.056,.111-i*.007,z],[0,.122-i*.007,z+.011],[.056,.111-i*.007,z]],.004);
+  mesh(foot,vamp,equipment,[0,0,0],[1,1,1]);
+  ovalDetail(foot,dark,0,.039,.158,.058,.031,.040);
+  ovalDetail(foot,equipment,0,.095,-.102,.067,.079,.061);
+  wire(foot,trim,[[side*.071,.041,-.12],[side*.078,.052,-.049],[side*.064,.063,.055],[side*.056,.061,.104]],.0041);
+  for(const side of [-1,1])wire(foot,dark,[[side*.054,.171,-.066],[side*.054,.12,.003],[side*.058,.078,.104]],.011);
+  for(let i=0;i<7;i++){
+    const z=.004+i*.016,y=.130-i*.0082;
+    wire(foot,steel,[[-.048,y,z+.006],[-.020,y+.012,z],[.021,y+.011,z+.003],[.050,y-.001,z-.005]],.0035);
   }
-  block(foot,dark,0,.006,.017,.142,.035,.326);
-  for(const z of [-.083,.093])block(foot,steel,0,-.015,z,.034,.043,.047);
-  wire(foot,steel,[[0,-.027,-.132],[0,-.057,-.091],[0,-.057,.135],[0,-.029,.183]],.010);
+  mesh(foot,padShape,dark,[0,.013,.019],[.151,.027,.321]);
+  mesh(foot,runner,steel,[0,0,0],[1,1,1]);
   return foot;
 }
 function glove(parent,pos,gloveColor,trim,side,goalie){
   const [x,y,z]=pos;
-  ovalDetail(parent,gloveColor,x,y,z,.071,.082,.084);
-  ovalDetail(parent,gloveColor,x+side*.057,y-.016,z+.059,.028,.047,.033);
+  const gloveRoot=new THREE.Group();parent.add(gloveRoot);gloveRoot.position.set(x,y,z);gloveRoot.rotation.z=side*.055;
+  const leather=material(0x25282c,.76), trace=material(0x60666a,.82);
+  ovalDetail(gloveRoot,gloveColor,0,-.013,.009,.058,.081,.042);
+  const cuff=mesh(gloveRoot,padShape,gloveColor,[0,.063,-.002],[.118,.050,.082]);cuff.rotation.x=.20;
+  mesh(gloveRoot,padShape,leather,[0,.022,.038],[.104,.056,.021]);
+  ovalDetail(gloveRoot,gloveColor,side*.047,-.027,.023,.021,.043,.025);
+  wire(gloveRoot,trace,[[side*.054,.026,.032],[side*.058,.001,.044],[side*.051,-.034,.043]],.0025);
   for(let i=0;i<4;i++){
-    ovalDetail(parent,gloveColor,x+(i-1.5)*.026,y+.017,z+.065,.016,.045,.031);
+    const offset=(i-1.5)*.021;
+    const pad=mesh(gloveRoot,padShape,gloveColor,[offset,-.029,.043],[.018,.043,.019]);pad.rotation.x=.10;
+    ovalDetail(gloveRoot,leather,offset,-.056+Math.abs(i-1.5)*.004,.033,.010,.018,.015);
+    wire(gloveRoot,trace,[[offset,-.010,.052],[offset,-.027,.054],[offset,-.043,.050]],.00145);
   }
-  if(!goalie)ovalDetail(parent,trim,x,y+.063,z-.01,.074,.020,.071);
+  if(!goalie){
+    wire(gloveRoot,trim,[[-.061,.069,.012],[-.043,.064,.037],[0,.063,.041],[.043,.064,.037],[.061,.069,.012]],.0027);
+    wire(gloveRoot,trace,[[-.046,.040,.047],[0,.035,.051],[.046,.040,.047]],.0019);
+  }
+}
+const frontNumberShape=new THREE.PlaneGeometry(.225,.225);
+const chestMarks=Object.fromEntries([['left',1],['right',-1]].map(([label,side])=>{
+  const geometry=new THREE.PlaneGeometry(.125,.125,12,6),p=geometry.attributes.position;
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i)+side*.113,y=p.getY(i)+1.303;
+    p.setXYZ(i,x,y,.164*Math.sqrt(1-(x/.249)**2)+.006);
+  }
+  geometry.computeVertexNormals();return [label,geometry];
+}));
+function castModelShadows(group){
+  group.traverse(piece=>{
+    if(piece.isMesh&&!piece.material.transparent){piece.castShadow=true;piece.receiveShadow=true;}
+  });
 }
 function skater({color,trim,number,goalie,variant=0,portrait=false}){
   const model=new THREE.Group(),upper=new THREE.Group();
@@ -366,23 +554,63 @@ function skater({color,trim,number,goalie,variant=0,portrait=false}){
   const jerseySeam=material(0xffffff,.9);
   jerseySeam.color.copy(jersey.color).multiplyScalar(.67);
   const relaxed=portrait&&!goalie;
-  mesh(upper,goalie?jerseyShape:tailoredJersey(relaxed),jersey,[0,0,0],[goalie?1.13:1,1,1]);
-  mesh(upper,hemShape,goalie?collar:jerseySeam,[0,0,0],[goalie?1.13:.965,1,goalie?1:.94]);
-  mesh(model,pantsShape,pants,[0,0,0],[goalie?1:.86,1,goalie?1:.76]);
-  ovalDetail(upper,equipment,0,1.433,.004,.102,.017,.078);
-  const face=athleteFaces[variant%athleteFaces.length];
-  const {head,skin,hair,helmet,eyeGroups}=buildHead(upper,face,collar,goalie);
+  const shirt=new THREE.Group();upper.add(shirt);
+  mesh(shirt,goalie?jerseyShape:tailoredJersey(relaxed),jersey,[0,0,0],[goalie?1.13:1,1,1]);
+  mesh(shirt,hemShape,goalie?collar:jerseySeam,[0,0,0],[goalie?1.13:.965,1,goalie?1:.94]);
+  if(!goalie){
+    const crew=Array.from({length:29},(_,i)=>{
+      const a=i/28*Math.PI*2;return [.102*Math.sin(a),1.459-.033*Math.max(0,Math.cos(a)),.078*Math.cos(a)];
+    });
+    wire(shirt,jerseySeam,crew,.009);
+    for(const side of [-1,1])wire(shirt,jerseySeam,[[side*.218,.770,.056],[side*.223,.892,.064],[side*.222,1.019,.063]],.0018);
+  }
+  const trousers=[mesh(model,pantsShape,pants,[0,0,0],[goalie?1:.86,1,goalie?1:.76])];
+  const padding=new THREE.Group();upper.add(padding);padding.visible=false;
+  const girdle=new THREE.Group();model.add(girdle);girdle.visible=false;
+  const underLayers=[padding,girdle];
+  const baseLayer=material(0x252d37,.96),foam=material(0x35434e,.72),binding=material(0x778892,.80);
+  if(!goalie){
+    mesh(padding,jerseyShape,baseLayer,[0,.017,0],[.70,.99,.71]);
+    mesh(padding,padShape,foam,[0,1.232,.102],[.28,.29,.102]);
+    mesh(padding,padShape,foam,[0,1.240,-.092],[.26,.31,.086]);
+    for(const y of [1.166,1.231,1.296])wire(padding,binding,[[-.095,y,.151],[0,y-.012,.158],[.095,y,.151]],.0043);
+    mesh(girdle,pantsShape,baseLayer,[0,0,0],[.82,1,.75]);
+    mesh(girdle,padShape,foam,[0,.787,.104],[.132,.127,.059]);
+  }
+  const headRoot=new THREE.Group();upper.add(headRoot);
+  const headCache=new Map();
+  let currentHead;
+  function equipHead(preset){
+    if(currentHead)currentHead.root.visible=false;
+    const face=athleteFaces[preset];
+    if(!headCache.has(preset)){
+      const root=new THREE.Group();headRoot.add(root);
+      headCache.set(preset,{root,face,preset,...buildHead(root,face,collar,goalie,preset)});
+    }
+    currentHead=headCache.get(preset);currentHead.root.visible=true;
+    return currentHead;
+  }
+  const initialHead=equipHead(variant);
   const legs=[];
   for(const side of [-1,1]){
     const thigh=new THREE.Group(),root=new THREE.Bone(),shin=new THREE.Bone();
     thigh.position.set(side*(goalie?.183:.139),.835,0);model.add(thigh);
     thigh.add(root);shin.position.set(0,-.395,.038);root.add(shin);
-    dressLeg(thigh,root,shin,pants);
+    trousers.push(dressLeg(thigh,root,shin,pants));
     if(goalie){
       mesh(shin,padShape,white,[0,-.143,.105],[.244,.446,.138]);
       mesh(shin,padShape,collar,[side*.070,-.143,.166],[.066,.388,.024]);
       for(const y of [-.02,-.095,-.17])block(shin,white,0,y,.177,.169,.018,.026);
       for(const y of [-.10,-.21,-.30])block(shin,equipment,0,y,-.047,.24,.041,.075);
+    }else{
+      const hip=new THREE.Group(),legPad=new THREE.Group();thigh.add(hip);shin.add(legPad);
+      const liner=dressLeg(thigh,root,shin,baseLayer,linerShape);
+      underLayers.push(hip,legPad,liner);hip.visible=false;legPad.visible=false;liner.visible=false;
+      mesh(hip,padShape,foam,[side*.033,-.133,.053],[.148,.219,.104]);
+      ovalDetail(legPad,baseLayer,0,-.159,.037,.069,.214,.076);
+      mesh(legPad,padShape,foam,[0,-.166,.092],[.130,.292,.071]);
+      ovalDetail(legPad,foam,0,-.010,.089,.080,.073,.061);
+      for(const y of [-.107,-.226])wire(legPad,binding,[[-.052,y,.102],[0,y,.130],[.052,y,.102]],.004);
     }
     const skate=boot(shin,side,steel,boots,steel,dark);
     legs.push({thigh,shin,skate});
@@ -403,11 +631,15 @@ function skater({color,trim,number,goalie,variant=0,portrait=false}){
       sleeve(upper,jersey,shoulder,elbow,.104*d);
       ovalDetail(upper,jersey,...elbow,.087*d,.086,.092);
       sleeve(upper,jersey,elbow,hand,.088*d);
+    }else{
+      ovalDetail(padding,foam,side*.216,1.347,.005,.118,.083,.106);
+      sleeve(padding,baseLayer,shoulder,elbow,.061);
+      const forearm=elbow.map((value,i)=>THREE.MathUtils.lerp(value,hand[i],.47));
+      sleeve(padding,baseLayer,elbow,hand,.052);
+      ovalDetail(padding,foam,...forearm,.064,.078,.057);
     }
     if(!goalie||shootingHand){
       glove(upper,hand,gloves,steel,side,goalie);
-      const [x,y,z]=hand;
-      if(!goalie)wire(upper,steel,[[x-.061,y+.042,z+.026],[x-.030,y+.062,z+.067],[x+.020,y+.058,z+.072],[x+.062,y+.041,z+.029]],.004);
     }
     if(goalie&&shootingHand){
       const blocker=mesh(upper,padShape,white,[hand[0]+.024,hand[1]+.009,hand[2]+.086],[.211,.279,.084]);
@@ -434,16 +666,17 @@ function skater({color,trim,number,goalie,variant=0,portrait=false}){
   const back=mesh(upper,new THREE.PlaneGeometry(.405,.354),numberMaterial,[0,1.204,-.174],[1,1,1]);back.rotation.y=Math.PI;
   const crest=document.createElement('canvas');crest.width=crest.height=192;
   const crestTexture=new THREE.CanvasTexture(crest);crestTexture.colorSpace=THREE.SRGBColorSpace;
-  const front=mesh(upper,new THREE.PlaneGeometry(.225,.225),new THREE.MeshBasicMaterial({map:crestTexture,transparent:true,depthWrite:false}),[0,1.223,.173],[1,1,1]);
+  const front=mesh(upper,frontNumberShape,new THREE.MeshBasicMaterial({map:crestTexture,transparent:true,depthWrite:false}),[0,1.223,.173],[1,1,1]);
   if(relaxed)front.visible=false;
   const patternCanvas=document.createElement('canvas');patternCanvas.width=256;patternCanvas.height=256;
   const weave=new THREE.CanvasTexture(patternCanvas);weave.colorSpace=THREE.SRGBColorSpace;
-  const avatar={model,upper,head,eyeGroups,legs,jersey,jerseySeam,kitTrim:collar,pants,boots,gloves,skin,hair,helmet,face,goalie,
+  const avatar={model,upper,...initialHead,legs,jersey,jerseySeam,kitTrim:collar,pants,boots,gloves,goalie,baseFace:variant,
+    shirt,trousers,underLayers,back,equipFace(preset){Object.assign(this,equipHead(preset));},
     number:g,printing,logo:crest.getContext('2d'),crestTexture,front,weave,pattern:patternCanvas.getContext('2d'),relaxed};
   paintMarkings(avatar,number);
   return avatar;
 }
-function paintMarkings(body,number,name='',logo=''){
+function paintMarkings(body,number,name='',logo='',side='left'){
   const g=body.number;
   g.clearRect(0,0,256,256);g.fillStyle='#f4f8fc';g.strokeStyle='#101a28';g.lineJoin='round';
   g.font='900 44px system-ui';g.lineWidth=4;
@@ -452,7 +685,9 @@ function paintMarkings(body,number,name='',logo=''){
   g.font='900 147px system-ui';g.lineWidth=8;
   g.strokeText(number,128,153,236);g.fillText(number,128,153,236);body.printing.needsUpdate=true;
   const front=body.logo;
-  front.clearRect(0,0,192,192);body.front.visible=Boolean(logo)||!body.relaxed;
+  front.clearRect(0,0,192,192);body.hasFrontMark=Boolean(logo)||!body.relaxed;body.front.visible=body.hasFrontMark;
+  body.front.geometry=logo?(chestMarks[side]??chestMarks.left):frontNumberShape;
+  body.front.position.set(0,logo?0:1.223,logo?(body.goalie?.022:0):.173);
   body.logoSource=logo;
   if(logo){
     const image=new Image();image.onload=()=>{
@@ -707,9 +942,11 @@ export function createRinkView(canvas) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.45));
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.21;
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFShadowMap;
   const drawGlobe=globeView();
   const scene=new THREE.Scene();scene.background=new THREE.Color(0x101e2c);scene.fog=new THREE.FogExp2(0x101e2c,.013);
-  scene.add(new THREE.HemisphereLight(0xe7f3ff,0x78818e,2.2));
+  const ambient=new THREE.HemisphereLight(0xe7f3ff,0x78818e,2.2);scene.add(ambient);
   const skylight=new THREE.DirectionalLight(0xeaf8ff,2.6);skylight.position.set(-7,14,7);scene.add(skylight);
   const world=new THREE.Group();scene.add(world);const {crowd,entryGate}=buildArena(world);
   const concourse=new THREE.Group();world.add(concourse);
@@ -748,12 +985,14 @@ export function createRinkView(canvas) {
   const studioModels=athleteFaces.map((_,variant)=>{
     const avatar=skater({color:0x161f43,trim:0xaad7f2,number:9,goalie:variant===5,variant,portrait:true});
     photoStage.add(avatar.model);
+    avatar.studioLighting=true;castModelShadows(avatar.model);
     animateAthlete(avatar,0,0,variant,true);
     return avatar;
   });
   const floorTexture=paintIce();floorTexture.repeat.set(.23,.45);floorTexture.offset.set(.46,.37);
   const floor=mesh(photoStage,new THREE.PlaneGeometry(14,11),new THREE.MeshStandardMaterial({map:floorTexture,roughness:.48,metalness:.07}),[0,-.016,0],[1,1,1]);
   floor.rotation.x=-Math.PI/2;
+  floor.receiveShadow=true;
   const dasher=material(0xb1c6d4), rail=material(0x183a5c), kick=material(0xc6ab53);
   block(photoStage,dasher,0,.42,-4.35,14,.84,.21);
   block(photoStage,rail,0,.83,-4.24,14,.05,.06);
@@ -774,26 +1013,37 @@ export function createRinkView(canvas) {
   shadow.rotation.x=-Math.PI/2;
   const explorerShadow=mesh(concourse,new THREE.PlaneGeometry(.81,.61),shadow.material,[0,.037,0],[1,1,1]);
   explorerShadow.rotation.x=-Math.PI/2;
-  const rim=new THREE.DirectionalLight(0xc4d6fb,1.75);rim.position.set(-3,4,-5);photoStage.add(rim);
-  const fill=new THREE.DirectionalLight(0xffece3,1.4);fill.position.set(3,4,4);photoStage.add(fill);
+  const rim=new THREE.DirectionalLight(0xc4d6fb,2.3);rim.position.set(-3,4,-5);photoStage.add(rim);
+  const fill=new THREE.DirectionalLight(0xdce8fc,.85);fill.position.set(3,2,4);photoStage.add(fill);
+  const key=new THREE.DirectionalLight(0xffeee7,3.1);key.position.set(-2.3,4.2,3.8);photoStage.add(key);
+  key.target.position.set(0,.86,0);photoStage.add(key.target);
+  key.castShadow=true;key.shadow.mapSize.set(1024,1024);
+  Object.assign(key.shadow.camera,{left:-1.4,right:1.4,top:1.55,bottom:-1.55,near:.2,far:9});
+  key.shadow.camera.updateProjectionMatrix();key.shadow.bias=-.0002;key.shadow.normalBias=.004;key.shadow.radius=2.4;key.shadow.intensity=.64;
   const camera=new THREE.PerspectiveCamera(40,1,.1,140),ray=new THREE.Raycaster(),point=new THREE.Vector3();
   const plane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
   const look=new THREE.Vector3();
   let width=0,height=0,lastKitIdentity;
   function updateKit(body,identity){
+    const preset=Number.isInteger(identity.facePreset)&&athleteFaces[identity.facePreset]?identity.facePreset:body.baseFace;
+    if(body.preset!==preset){body.equipFace(preset);if(body.studioLighting)castModelShadows(body.root);}
     paintJersey(body,identity.color,identity.accent,identity.pattern);
     body.model.scale.y=identity.height/170;
     body.pants.color.set(identity.pants||0x172039);body.boots.color.set(identity.skates||0x13171c);
     body.gloves.color.set(identity.gloves||0x13171c);body.helmet.color.set(identity.helmet||(body.goalie?0xeaf4f6:0x15191e));
-    body.skin.color.set(identity.skin||body.face.skin);body.hair.color.set(identity.hair||body.face.hair);
-    paintMarkings(body,identity.number,identity.jerseyName,identity.logo);
+    body.skin.color.set(identity.skin||body.face.skin);
+    const hair=body.setHair(identity.hairStyle,identity.hair);
+    if(body.studioLighting)castModelShadows(hair);
+    paintMarkings(body,identity.number,identity.jerseyName,identity.logo,identity.logoSide);
   }
-  function draw(game,mode,time,identity,turn=0,zoom=1,pose='Ready'){
+  function draw(game,mode,time,identity,turn=0,zoom=1,pose='Ready',showPadding=false){
     const w=canvas.clientWidth,h=canvas.clientHeight;
     if(!w||!h)return;
     if(w!==width||h!==height){width=w;height=h;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
     if(mode==='globe'){drawGlobe(renderer,w/h,game);return;}
     const showModel=mode==='studio'||mode==='profile'||mode==='players';
+    ambient.intensity=showModel?1.06:2.2;
+    skylight.intensity=showModel?.22:2.6;
     world.visible=!showModel;rinkGroup.visible=!showModel;photoStage.visible=showModel;
     const visiting=mode==='explore'||mode==='travel';
     concourse.visible=visiting||mode==='venues';explorer.model.visible=mode==='explore'&&!game?.firstPerson;
@@ -806,8 +1056,12 @@ export function createRinkView(canvas) {
       const studio=studioModels[variant];
       studioModels.forEach((avatar,index)=>{avatar.model.visible=index===variant;});
       if(identity!==lastKitIdentity){updateKit(studio,identity);lastKitIdentity=identity;}
+      studio.shirt.visible=!showPadding;
+      studio.back.visible=!showPadding;studio.front.visible=!showPadding&&studio.hasFrontMark;
+      studio.trousers.forEach(piece=>{piece.visible=!showPadding;});
+      studio.underLayers.forEach(layer=>{layer.visible=showPadding;});
       studio.model.rotation.y=turn;
-      studio.model.position.y=studio.relaxed?-.022:0;
+      studio.model.position.y=studio.relaxed?-.012:0;
       shadow.position.x=Math.sin(turn)*.11;shadow.position.z=Math.cos(turn)*.11;
       animateAthlete(studio,time,pose==='Skate'?.65:0,variant,pose!=='Skate');
       studio.head.rotation.x=0;
@@ -871,13 +1125,14 @@ export function createRinkView(canvas) {
   function setTeams(home,away,identity){
     for(let i=0;i<models.length;i++){
       const team=i<6?home:away, avatar=models[i];
+      if(avatar.preset!==avatar.baseFace)avatar.equipFace(avatar.baseFace);
       avatar.model.scale.y=1;
       paintJersey(avatar,team.color);
       avatar.kitTrim.color.set(team.trim);
       avatar.pants.color.set(i%6===5?0x1d2634:0x172039);
       avatar.boots.color.set(0x13171c);avatar.gloves.color.set(0x13171c);
       avatar.helmet.color.set(avatar.goalie?0xeaf4f6:0x15191e);
-      avatar.skin.color.set(avatar.face.skin);avatar.hair.color.set(avatar.face.hair);
+      avatar.skin.color.set(avatar.face.skin);avatar.setHair(undefined);
       paintMarkings(avatar,i%6===5?1:9+i%6);
       if(i===0&&identity)updateKit(avatar,identity);
     }

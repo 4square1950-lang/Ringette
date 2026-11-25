@@ -1,5 +1,5 @@
 import {action,createMatch,roles,switchPlayer,tick} from './engine.js';
-import {createRinkView} from './rink.js';
+import {createRinkView,facePresets,hairPresets} from './rink.js';
 import {limits,rooms,stations,spawn,moveWalker,nearestStation,roomAt} from './campus.js';
 
 const $=id=>document.getElementById(id);
@@ -28,7 +28,7 @@ const lots=[
 ];
 const key='ringette-northern-circuit.v1';
 const navyKit='#161f43';
-const save={profile:{name:'Player',handle:'player',bio:'',height:170,number:9,color:navyKit,jerseyName:'',accent:'#c5deed',pattern:'solid',logo:'',pants:'#172039',skates:'#13171c',gloves:'#13171c',helmet:'#15191e',skin:'#c88e72',hair:'#2c201e'},wins:[],games:[],
+const save={profile:{name:'Player',handle:'player',bio:'',height:170,number:9,color:navyKit,jerseyName:'',accent:'#c5deed',pattern:'solid',logo:'',logoSide:'left',pants:'#172039',skates:'#13171c',gloves:'#13171c',helmet:'#15191e',skin:'#c88e72',hair:'#2c201e',facePreset:0,hairStyle:'ponytail'},wins:[],games:[],
   coins:120,xp:0,clan:null,cup:null,owned:[],currentVenue:0,period:180,mutedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches};
 try{const previous=JSON.parse(localStorage.getItem(key)??'{}');const profile={...save.profile,...previous.profile};Object.assign(save,previous,{profile});}catch{}
 function persist(){localStorage.setItem(key,JSON.stringify(save));}
@@ -40,7 +40,7 @@ const viewTitles={map:'World Tour',venues:'Venue tours',travel:'Travel',explore:
   clans:'Clans',studio:'Character Studio',players:'Players',shop:'Shop',auctions:'Auctions',profile:'Profile',settings:'Settings',
   rules:'Rules & controls',setup:'Match setup'};
 let screen='home',match,selectedVenue=save.currentVenue,selectedHome=0,selectedAway=1,mode='single',identityDraft,spin=0,last=performance.now(),matchTime=0;
-let studioZoom=1,studioRotate=false,studioCycle=false,studioPose='Ready',strokeStart=0;
+let studioZoom=1,studioRotate=false,studioCycle=false,studioPadding=false,studioPose='Ready',strokeStart=0;
 let demo=createMatch({clubs:clubs.slice(0,2).map(({name})=>name),demo:true});
 let currentEvent=-1,aim;
 const keys=new Set();
@@ -466,7 +466,7 @@ function profile(){
   return grid(form,gallery({...save.profile}));
 }
 function studio(){
-  spin=0;studioZoom=1;studioRotate=false;studioCycle=false;studioPose='Ready';strokeStart=0;
+  spin=0;studioZoom=1;studioRotate=false;studioCycle=false;studioPadding=false;studioPose='Ready';strokeStart=0;
   const form=element('form','','panel kit-editor'),stage=element('div','','studio-stage');
   const output=element('output');output.setAttribute('aria-live','polite');
   const pane=gallery({...save.profile},true);
@@ -524,14 +524,23 @@ function studio(){
     }catch{output.textContent='That image could not be opened.';}
   };
   const remove=button('Remove logo',()=>{logoVersion++;upload.value='';update('logo','');});
+  const logoSide=choose('Logo position',[{value:'left',text:'Player’s left chest'},{value:'right',text:'Player’s right chest'}],identityDraft.logoSide,value=>{
+    update('logoSide',value);spin=0;
+  });
   const navy=button('Navy kit',()=>{
     color.input.value=navyKit;accent.input.value=save.profile.accent;pattern.querySelector('select').value='solid';
     identityDraft={...identityDraft,color:navyKit,pattern:'solid'};spin=0;
   });
-  addTab('Jersey',pattern,grid(color.node,accent.node),grid(name.node,number.node),logo,grid(remove,navy));
+  addTab('Jersey',pattern,grid(color.node,accent.node),grid(name.node,number.node),grid(logo,logoSide),grid(remove,navy));
   addTab('Equipment',grid(collect('Pants color','pants','color').node,collect('Skate color','skates','color').node,
-    collect('Glove color','gloves','color').node,collect('Helmet color','helmet','color').node));
-  addTab('Appearance',grid(collect('Skin tone','skin','color').node,collect('Hair color','hair','color').node,
+    collect('Glove color','gloves','color').node,collect('Helmet color','helmet','color').node),toggle('Show padding',()=>studioPadding,value=>studioPadding=value));
+  const faceChoice=choose('Face',facePresets.map((text,value)=>({value,text})),identityDraft.facePreset,value=>{
+    update('facePreset',Number(value));spin=0;
+  });
+  const hairChoice=choose('Hairstyle',Object.entries(hairPresets).map(([value,text])=>({value,text})),identityDraft.hairStyle,value=>{
+    update('hairStyle',value);spin=Math.PI*.72;
+  });
+  addTab('Appearance',grid(faceChoice,hairChoice),grid(collect('Skin tone','skin','color').node,collect('Hair color','hair','color').node,
     collect('Height (cm)','height','number',{min:150,max:195,required:''}).node));
   form.append(sections,groups,element('button','Save character','primary'),output);
   form.onsubmit=event=>{
@@ -682,7 +691,7 @@ function frame(time){
   }else if(['profile','studio','players'].includes(screen)){
     if(screen==='studio'&&studioRotate)spin=(spin+dt*.62)%(Math.PI*2);
     const pose=studioCycle?['Ready','Skate','Look around'][Math.floor(Math.max(0,time-strokeStart)/3400)%3]:studioPose;
-    rink.draw(null,screen,time/1000,identityDraft,screen==='profile'?0:spin,screen==='studio'?studioZoom:1,screen==='studio'?pose:'Ready');
+    rink.draw(null,screen,time/1000,identityDraft,screen==='profile'?0:spin,screen==='studio'?studioZoom:1,screen==='studio'?pose:'Ready',screen==='studio'&&studioPadding);
   }
 }
 show('home');
